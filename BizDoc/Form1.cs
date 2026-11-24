@@ -1,4 +1,4 @@
-﻿using System.Drawing.Printing;
+using System.Drawing.Printing;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -211,7 +211,7 @@ public partial class Form1 : Form
         };
         output.RowStyles.Add(new(SizeType.AutoSize));
         output.RowStyles.Add(new(SizeType.Percent, 100));
-        var outputTools = Toolbar(Button("미리보기", () => Print(true)), Button("인쇄 / PDF", () => Print(false)),
+        var outputTools = Toolbar(Button("저장", SaveDocument, true), Button("미리보기", () => Print(true)), Button("인쇄 / PDF", () => Print(false)),
             Button("엑셀용 CSV", ExportCsv));
         outputTools.Padding = new Padding(12, 8, 8, 8);
         output.Controls.Add(outputTools, 0, 0);
@@ -426,7 +426,7 @@ public partial class Form1 : Form
 
     private static void StyleTab(Button button, bool selected)
     {
-        button.BackColor = selected ? Blue : Color.White;
+        button.BackColor = selected ? Color.FromArgb(39, 129, 226) : Color.FromArgb(240, 244, 249);
         button.ForeColor = selected ? Color.White : Navy;
         button.FlatAppearance.BorderColor = selected ? Blue : Color.FromArgb(185, 200, 222);
     }
@@ -438,14 +438,39 @@ public partial class Form1 : Form
         var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(16, 12, 15, 12), Margin = Padding.Empty, BackColor = Color.FromArgb(248, 250, 253) };
         var editor = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1 };
         editor.ColumnStyles.Add(new(SizeType.Percent, 100));
-        var titleRow = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Margin = Padding.Empty };
+        var titleRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Top, AutoSize = true, ColumnCount = 4, RowCount = 1,
+            Margin = Padding.Empty, Padding = new Padding(7, 3, 6, 5)
+        };
+        titleRow.ColumnStyles.Add(new(SizeType.AutoSize));
         titleRow.ColumnStyles.Add(new(SizeType.Percent, 100));
         titleRow.ColumnStyles.Add(new(SizeType.AutoSize));
+        titleRow.ColumnStyles.Add(new(SizeType.AutoSize));
+        var documentIcon = new Panel { Size = new Size(28, 28), Anchor = AnchorStyles.Left, Margin = new Padding(0, 0, 8, 0) };
+        documentIcon.Paint += (_, e) =>
+        {
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            e.Graphics.ScaleTransform(documentIcon.ClientSize.Width / 24f, documentIcon.ClientSize.Height / 24f);
+            using var pen = new Pen(Navy, 1.5f) { LineJoin = System.Drawing.Drawing2D.LineJoin.Round };
+            MenuIcons.Quote(e.Graphics, pen);
+        };
+        titleRow.Controls.Add(documentIcon, 0, 0);
         heading.Anchor = AnchorStyles.Left;
-        titleRow.Controls.Add(heading, 0, 0);
+        heading.Margin = new Padding(0, 0, 8, 0);
+        titleRow.Controls.Add(heading, 1, 0);
         quoteTab = Button("견적서", () => { if (kind != DocumentKind.Quote) NewDocument(DocumentKind.Quote); });
         statementTab = Button("거래명세서", () => { if (kind != DocumentKind.Statement) NewDocument(DocumentKind.Statement); });
-        titleRow.Controls.Add(Toolbar(quoteTab, statementTab, Button("저장", SaveDocument, true)), 1, 0);
+        foreach (var tab in new[] { quoteTab, statementTab })
+        {
+            tab.Dock = DockStyle.Fill;
+            tab.MinimumSize = new Size(92, 33);
+            tab.Margin = Padding.Empty;
+            tab.Font = new("맑은 고딕", 10, FontStyle.Bold);
+            RoundMenuButton(tab);
+        }
+        titleRow.Controls.Add(quoteTab, 2, 0);
+        titleRow.Controls.Add(statementTab, 3, 0);
         editor.Controls.Add(titleRow);
         editor.Controls.Add(Section("기본 정보"));
         editor.Controls.Add(Fields(("문서번호", number), ("작성일자", date), ("유효기간", expires), ("담당자", owner)));
