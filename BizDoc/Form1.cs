@@ -476,7 +476,7 @@ public partial class Form1 : Form
         editor.Controls.Add(Fields(("문서번호", number), ("작성일자", date), ("유효기간", expires), ("담당자", owner)));
         editor.Controls.Add(Section("거래처 정보"));
         editor.Controls.Add(Fields(("거래처", customer), ("담당자", contact), ("연락처", phone), ("이메일", email)));
-        var itemHeader = Toolbar(Button("+ 품목 추가", () => items.Rows.Add("", "", 1, 0, ""), true),
+        var itemHeader = Toolbar(Button("+ 품목 추가", AddItem, true),
             Button("상품 선택", PickProduct), Button("복사", CopyItem), Button("삭제", DeleteItem),
             Button("↑", () => MoveItem(-1)), Button("↓", () => MoveItem(1)));
         itemHeader.Controls.Add(new Label { Text = "품목 정보", AutoSize = true, ForeColor = Navy, Margin = new Padding(7, 8, 10, 0) });
@@ -498,7 +498,6 @@ public partial class Form1 : Form
         };
         items.DefaultCellStyle.SelectionBackColor = Color.FromArgb(205, 228, 255);
         items.DefaultCellStyle.SelectionForeColor = Navy;
-        items.ColumnHeadersDefaultCellStyle.SelectionBackColor = Pale;
         items.AllowUserToAddRows = false;
         foreach (var name in new[] { "품목명", "규격/모델", "수량", "단가(원)", "금액(원)" })
             items.Columns.Add(new DataGridViewTextBoxColumn { HeaderText = name, FillWeight = name == "수량" ? 48 : 100 });
@@ -509,6 +508,13 @@ public partial class Form1 : Form
         items.Columns[4].DefaultCellStyle.Format = "N0";
         items.CellValidating += (_, e) =>
         {
+            if (e.ColumnIndex == 0 && items.IsCurrentCellDirty &&
+                string.IsNullOrWhiteSpace(Convert.ToString(e.FormattedValue)))
+            {
+                e.Cancel = true;
+                status.Text = "  품목명을 입력하세요.";
+                return;
+            }
             if (e.ColumnIndex is not (2 or 3)) return;
             if (TryNumber(Convert.ToString(e.FormattedValue), out decimal _)) return;
             e.Cancel = true;
@@ -590,7 +596,8 @@ public partial class Form1 : Form
         BackgroundColor = Color.White, BorderStyle = BorderStyle.FixedSingle, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
         RowHeadersVisible = false, MultiSelect = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect,
         ReadOnly = readOnly, AllowUserToResizeRows = false, RowTemplate = { Height = 29 },
-        EnableHeadersVisualStyles = false, ColumnHeadersDefaultCellStyle = { BackColor = Pale, ForeColor = Navy },
+        EnableHeadersVisualStyles = false,
+        ColumnHeadersDefaultCellStyle = { BackColor = Pale, ForeColor = Navy, SelectionBackColor = Pale, SelectionForeColor = Navy },
         AlternatingRowsDefaultCellStyle = { BackColor = Color.FromArgb(246, 249, 255) }
     };
 
@@ -681,10 +688,37 @@ public partial class Form1 : Form
         preview.Invalidate();
     }
 
+    private void AddItem()
+    {
+        if (!items.EndEdit()) return;
+        using var dialog = Dialog("품목 추가", 420, 150);
+        var name = new TextBox();
+        var add = Button("추가", () =>
+        {
+            var itemName = name.Text.Trim();
+            if (itemName.Length == 0)
+            {
+                name.Focus();
+                return;
+            }
+
+            items.Rows.Add(itemName, "", 1, 0, 0);
+            dialog.Close();
+        }, true);
+        add.Enabled = false;
+        name.TextChanged += (_, _) => add.Enabled = !string.IsNullOrWhiteSpace(name.Text);
+        dialog.Controls.Add(Toolbar(add));
+        dialog.Controls.Add(Fields(("품목명", name)));
+        dialog.AcceptButton = add;
+        dialog.ActiveControl = name;
+        dialog.ShowDialog(this);
+    }
+
     private void CopyItem()
     {
         if (!items.EndEdit() || items.CurrentRow is not { } row) return;
         var item = ReadItem(row);
+        if (string.IsNullOrWhiteSpace(item.Name)) return;
         items.Rows.Add(item.Name, item.Model, item.Quantity, item.Price, item.Amount);
     }
 
