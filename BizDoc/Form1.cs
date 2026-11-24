@@ -7,6 +7,12 @@ namespace BizDoc;
 
 public partial class Form1 : Form
 {
+#if SETTINGS_DISABLED
+    private static bool SettingsEnabled => false;
+#else
+    private static bool SettingsEnabled => true;
+#endif
+
     private static readonly Color Navy = Color.FromArgb(23, 43, 75);
     private static readonly Color Blue = Color.FromArgb(31, 112, 211);
     private static readonly Color Pale = Color.FromArgb(232, 240, 252);
@@ -179,7 +185,7 @@ public partial class Form1 : Form
         AddNav("거래처 관리", ManageCustomers, MenuIcons.Customers);
         AddNav("상품 관리", ManageProducts, MenuIcons.Product);
         AddNav("통계 / 현황", ShowStats, MenuIcons.Statistics);
-        AddNav("환경 설정", EditSupplier, MenuIcons.Settings);
+        AddNav("환경 설정", EditSupplier, MenuIcons.Settings, enabled: SettingsEnabled);
         frame.Controls.Add(nav, 0, 1);
         frame.SetRowSpan(nav, 2);
 
@@ -192,7 +198,7 @@ public partial class Form1 : Form
         };
         commands.Controls.AddRange([quoteMenu, statementMenu, MenuButton("문서목록", ShowDocuments, MenuIcons.Documents),
             MenuButton("거래처관리", ManageCustomers, MenuIcons.Customers), MenuButton("상품관리", ManageProducts, MenuIcons.Product),
-            MenuButton("통계/현황", ShowStats, MenuIcons.Statistics), MenuButton("환경설정", EditSupplier, MenuIcons.Settings)]);
+            MenuButton("통계/현황", ShowStats, MenuIcons.Statistics), MenuButton("환경설정", EditSupplier, MenuIcons.Settings, enabled: SettingsEnabled)]);
         frame.Controls.Add(commands, 1, 1);
 
         var columns = new TableLayoutPanel
@@ -225,7 +231,7 @@ public partial class Form1 : Form
         frame.SetColumnSpan(status, 2);
         Controls.Add(frame);
 
-        void AddNav(string label, Action action, Action<Graphics, Pen> drawIcon, bool selected = false)
+        void AddNav(string label, Action action, Action<Graphics, Pen> drawIcon, bool selected = false, bool enabled = true)
         {
             var button = Button(label, null, true);
             button.Dock = DockStyle.Top;
@@ -235,6 +241,8 @@ public partial class Form1 : Form
             button.Padding = new Padding(12, 4, 8, 4);
             button.FlatAppearance.BorderSize = 0;
             button.FlatAppearance.MouseDownBackColor = Blue;
+            button.Enabled = enabled;
+            if (!enabled) button.ForeColor = Color.Silver;
             StyleNav(button, selected);
             if (selected) selectedNav = button;
             button.Click += (_, _) =>
@@ -320,7 +328,7 @@ public partial class Form1 : Form
         }
     }
 
-    private Button MenuButton(string label, Action action, Action<Graphics, Pen> drawIcon, bool selectOnClick = true)
+    private Button MenuButton(string label, Action action, Action<Graphics, Pen> drawIcon, bool selectOnClick = true, bool enabled = true)
     {
         var button = Button(label, null);
         button.AutoSize = false;
@@ -336,6 +344,8 @@ public partial class Form1 : Form
             action();
         };
         StyleMenu(button, selected: false);
+        button.Enabled = enabled;
+        if (!enabled) button.ForeColor = SystemColors.GrayText;
         AddMenuIcon(button, drawIcon);
         RoundMenuButton(button);
         return button;
@@ -929,6 +939,8 @@ public partial class Form1 : Form
 
     private void EditSupplier()
     {
+        if (!SettingsEnabled) return;
+
         using var dialog = Dialog("공급자 정보", 640, 250);
         TextBox name = new() { Text = data.Supplier.Name };
         TextBox registration = new() { Text = data.Supplier.Registration };

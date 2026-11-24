@@ -30,19 +30,23 @@
         {
             designSurface = new Form1DesignSurface();
             SuspendLayout();
-            //
+            // 
             // designSurface
-            //
+            // 
             designSurface.Dock = DockStyle.Fill;
+            designSurface.Location = new Point(0, 0);
+            designSurface.Margin = new Padding(4, 4, 4, 4);
             designSurface.Name = "designSurface";
+            designSurface.Size = new Size(2355, 1410);
             designSurface.TabIndex = 0;
-            //
+            // 
             // Form1
-            //
-            AutoScaleDimensions = new SizeF(96F, 96F);
+            // 
+            AutoScaleDimensions = new SizeF(144F, 144F);
             AutoScaleMode = AutoScaleMode.Dpi;
-            ClientSize = new Size(1570, 940);
+            ClientSize = new Size(2355, 1410);
             Controls.Add(designSurface);
+            Margin = new Padding(4, 4, 4, 4);
             Name = "Form1";
             Text = "견적서·거래명세서 자동발행";
             ResumeLayout(false);
