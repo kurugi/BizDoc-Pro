@@ -77,6 +77,7 @@ public partial class Form1 : Form
     }
 
     private const float InterfaceZoom = 0.96f;
+    private const string TotalLabel = "합계금액";
 
     protected override void OnLoad(EventArgs e)
     {
@@ -445,8 +446,8 @@ public partial class Form1 : Form
 
     private Control BuildEditor()
     {
-        var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(16, 12, 15, 12), Margin = Padding.Empty, BackColor = Color.FromArgb(248, 250, 253) };
-        var editor = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 1 };
+        var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(16, 12, 15, 50), Margin = Padding.Empty, BackColor = Color.FromArgb(248, 250, 253) };
+        var editor = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1 };
         editor.ColumnStyles.Add(new(SizeType.Percent, 100));
         var titleRow = new TableLayoutPanel
         {
@@ -494,8 +495,8 @@ public partial class Form1 : Form
         itemHeader.BackColor = Pale;
         itemHeader.Margin = new Padding(0, 10, 0, 4);
         editor.Controls.Add(itemHeader);
-        items.Dock = DockStyle.Top;
-        items.Height = 195;
+        items.Dock = DockStyle.Fill;
+        items.MinimumSize = new Size(0, 195);
         ConfigureGridHeight(items);
         items.GridColor = Color.FromArgb(190, 202, 221);
         items.RowHeadersVisible = true;
@@ -514,8 +515,23 @@ public partial class Form1 : Form
         items.Columns[4].ReadOnly = true;
         for (var column = 2; column <= 4; column++)
             items.Columns[column].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
-        items.Columns[3].DefaultCellStyle.Format = "#,0.##";
+        items.Columns[3].DefaultCellStyle.Format = "N0";
         items.Columns[4].DefaultCellStyle.Format = "N0";
+        items.EditingControlShowing += (_, e) =>
+        {
+            if (e.Control is not TextBox input) return;
+            input.TextChanged -= FormatPriceInput;
+            input.KeyDown -= SkipPriceSeparator;
+            if (items.CurrentCell?.ColumnIndex != 3) return;
+            input.TextChanged += FormatPriceInput;
+            input.KeyDown += SkipPriceSeparator;
+        };
+        items.CellParsing += (_, e) =>
+        {
+            if (e.ColumnIndex != 3 || !TryNumber(Convert.ToString(e.Value), out var price)) return;
+            e.Value = decimal.Round(price, 0, MidpointRounding.AwayFromZero);
+            e.ParsingApplied = true;
+        };
         items.CellValidating += (_, e) =>
         {
             if (e.ColumnIndex == 0 && items.IsCurrentCellDirty &&
@@ -554,7 +570,18 @@ public partial class Form1 : Form
             phone.Text = match.Phone;
             email.Text = match.Email;
         };
+        for (var row = 0; row < editor.Controls.Count; row++)
+            editor.RowStyles.Add(editor.Controls[row] == items ? new(SizeType.Percent, 100) : new(SizeType.AutoSize));
+
+        void FitEditorToViewport()
+        {
+            editor.MinimumSize = new Size(0, Math.Max(0, scroll.ClientSize.Height - scroll.Padding.Vertical));
+        }
+
+        scroll.ClientSizeChanged += (_, _) => FitEditorToViewport();
+        scroll.PaddingChanged += (_, _) => FitEditorToViewport();
         scroll.Controls.Add(editor);
+        FitEditorToViewport();
         return scroll;
     }
 
@@ -683,6 +710,47 @@ public partial class Form1 : Form
 
     private static bool TryNumber(string? text, out decimal value) =>
         decimal.TryParse(text, NumberStyles.Number, CultureInfo.CurrentCulture, out value) && value is >= 0 and <= 1_000_000_000_000m;
+
+    private static void FormatPriceInput(object? sender, EventArgs e)
+    {
+        if (sender is not TextBox editor) return;
+        var format = CultureInfo.CurrentCulture.NumberFormat;
+        var text = editor.Text;
+        if (format.NumberGroupSeparator.Length == 0 || !TryNumber(text, out _)) return;
+
+        int decimalIndex = text.IndexOf(format.NumberDecimalSeparator, StringComparison.Ordinal);
+        string whole = decimalIndex < 0 ? text : text[..decimalIndex];
+        string fraction = decimalIndex < 0 ? "" : text[decimalIndex..];
+        if (!decimal.TryParse(whole, NumberStyles.AllowThousands, format, out var integer)) return;
+
+        string formatted = integer.ToString("N0", format) + fraction;
+        if (formatted == text) return;
+
+        string separator = format.NumberGroupSeparator;
+        int charactersToLeft = text[..editor.SelectionStart].Replace(separator, "").Length;
+        int caret = 0;
+        while (caret < formatted.Length && charactersToLeft > 0)
+        {
+            if (formatted.AsSpan(caret).StartsWith(separator.AsSpan(), StringComparison.Ordinal))
+                caret += separator.Length;
+            else
+            {
+                caret++;
+                charactersToLeft--;
+            }
+        }
+
+        editor.Text = formatted;
+        editor.SelectionStart = caret;
+    }
+
+    private static void SkipPriceSeparator(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyData != Keys.Delete || sender is not TextBox { SelectionLength: 0 } editor) return;
+        string separator = CultureInfo.CurrentCulture.NumberFormat.NumberGroupSeparator;
+        if (editor.Text.AsSpan(editor.SelectionStart).StartsWith(separator.AsSpan(), StringComparison.Ordinal))
+            editor.SelectionStart += separator.Length;
+    }
 
     private static Line ReadItem(DataGridViewRow row)
     {
@@ -822,7 +890,7 @@ public partial class Form1 : Form
         var grid = MakeGrid(true);
         grid.Dock = DockStyle.Fill;
         grid.AllowUserToAddRows = false;
-        foreach (var title in new[] { "구분", "문서번호", "작성일자", "거래처", "합계" }) grid.Columns.Add(title, title);
+        foreach (var title in new[] { "구분", "문서번호", "작성일자", "거래처", TotalLabel }) grid.Columns.Add(title, title);
         foreach (var doc in data.Documents.OrderByDescending(d => d.Date).ThenByDescending(d => d.Number))
         {
             var index = grid.Rows.Add(TitleOf(doc.Kind), doc.Number, doc.Date.ToString("yyyy-MM-dd"), doc.Customer, doc.Total.ToString("N0"));
@@ -973,7 +1041,7 @@ public partial class Form1 : Form
         MessageBox.Show(this, string.Join("\n", Enum.GetValues<DocumentKind>().Select(type =>
         {
             var docs = data.Documents.Where(d => d.Kind == type).ToList();
-            return $"{TitleOf(type)}  {docs.Count:N0}건  ·  합계 {docs.Sum(d => d.Total):N0}원";
+            return $"{TitleOf(type)}  {docs.Count:N0}건  ·  {TotalLabel} {docs.Sum(d => d.Total):N0}원";
         })), "저장 문서 현황");
     }
 
@@ -992,7 +1060,7 @@ public partial class Form1 : Form
             "주소", CurrentSupplier.Address, "연락처", CurrentSupplier.Phone);
         Row("품목명", "규격/모델", "수량", "단가", "금액");
         foreach (var item in doc.Items) Row(item.Name, item.Model, Numeric(item.Quantity), Numeric(item.Price), Numeric(item.Amount));
-        Row("공급가액", Numeric(doc.Subtotal), "부가세", Numeric(doc.Tax), "합계", Numeric(doc.Total));
+        Row("공급가액", Numeric(doc.Subtotal), "부가세", Numeric(doc.Tax), TotalLabel, Numeric(doc.Total));
         Row("비고", doc.Notes);
         try
         {
@@ -1098,9 +1166,9 @@ public partial class Form1 : Form
         public string Notes { get; set; } = "";
         public Supplier? Issuer { get; init; }
         public List<Line> Items { get; set; } = [];
-        public decimal Subtotal => Items.Sum(i => i.Amount);
-        public decimal Tax => decimal.Round(Subtotal * 0.1m, 0, MidpointRounding.AwayFromZero);
-        public decimal Total => Subtotal + Tax;
+        public decimal Total => Items.Sum(i => i.Amount);
+        public decimal Subtotal => decimal.Round(Total / 1.1m, 0, MidpointRounding.AwayFromZero);
+        public decimal Tax => Total - Subtotal;
     }
 
     public sealed record Store
@@ -1235,7 +1303,7 @@ public partial class Form1 : Form
                     foreach (var line in doc.Items.Skip(index).Take(RowsPerPage))
                     {
                         DrawRow([(++index).ToString(), line.Name, line.Model, line.Quantity.ToString("0.##"),
-                            line.Price.ToString("#,0.##"), line.Amount.ToString("N0")], y, false);
+                            line.Price.ToString("N0"), line.Amount.ToString("N0")], y, false);
                         y += 22;
                     }
                     if (page == itemPages - 1)
@@ -1243,7 +1311,7 @@ public partial class Form1 : Form
                         y += 9;
                         Total("공급가액", doc.Subtotal, y);
                         Total("부가세 (10%)", doc.Tax, y + 24);
-                        Total("합계금액", doc.Total, y + 48, true);
+                        Total(TotalLabel, doc.Total, y + 48, true);
                         if (doc.Notes.Length > 0 && InlineNotes(doc))
                         {
                             var notesY = Math.Max(y + 85, 838 - 35 - notes[0].Count(c => c == '\n') * 20);
