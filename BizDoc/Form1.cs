@@ -1030,7 +1030,20 @@ public partial class Form1 : Form
         print.PrintPage += (_, e) =>
         {
             if (e.Graphics is null) return;
-            Paper.Draw(e.Graphics, e.MarginBounds, doc, supplier, page++);
+            // Preview coordinates start at the paper edge. Printer coordinates start at the printable edge.
+            var hardMarginX = e.PageSettings.HardMarginX;
+            var hardMarginY = e.PageSettings.HardMarginY;
+            const float topMargin = 3f * 100 / 2.54f; // Printer coordinates use hundredths of an inch.
+            const float bottomMargin = 2f * 100 / 2.54f;
+            var contentTop = Math.Max(topMargin, hardMarginY);
+            var contentBottom = Math.Min(e.PageBounds.Height - bottomMargin, e.PageSettings.PrintableArea.Bottom);
+            var isPreview = print.PrintController.IsPreview;
+            var bounds = new RectangleF(
+                e.MarginBounds.Left - (isPreview ? 0 : hardMarginX),
+                contentTop - (isPreview ? 0 : hardMarginY),
+                e.MarginBounds.Width,
+                contentBottom - contentTop);
+            Paper.Draw(e.Graphics, bounds, doc, supplier, page++, alignContentToTop: true);
             e.HasMorePages = page < Paper.PageCount(doc);
         };
         try
@@ -1175,14 +1188,18 @@ public partial class Form1 : Form
 
         private static int ItemPages(Document doc) => Math.Max(1, (doc.Items.Count + RowsPerPage - 1) / RowsPerPage);
 
-        public static void Draw(Graphics graphics, Rectangle bounds, Document doc, Supplier supplier, int page)
+        public static void Draw(Graphics graphics, RectangleF bounds, Document doc, Supplier supplier, int page, bool alignContentToTop = false)
         {
             var state = graphics.Save();
             try
             {
-                var scale = Math.Min(bounds.Width / PageWidth, bounds.Height / PageHeight);
+                const int headerTop = 25;
+                var contentTop = alignContentToTop ? headerTop : 0;
+                var contentHeight = PageHeight - contentTop;
+                var scale = Math.Min(bounds.Width / PageWidth, bounds.Height / contentHeight);
+                var top = alignContentToTop ? bounds.Y - contentTop * scale : bounds.Y + (bounds.Height - contentHeight * scale) / 2;
                 graphics.TranslateTransform(bounds.X + (bounds.Width - PageWidth * scale) / 2,
-                    bounds.Y + (bounds.Height - PageHeight * scale) / 2);
+                    top);
                 graphics.ScaleTransform(scale, scale);
                 using var title = new Font("맑은 고딕", 36, FontStyle.Bold, GraphicsUnit.Pixel);
                 using var normal = new Font("맑은 고딕", 13, GraphicsUnit.Pixel);
@@ -1195,8 +1212,8 @@ public partial class Form1 : Form
                 using var right = new StringFormat(left) { Alignment = StringAlignment.Far };
 
                 graphics.DrawString(TitleOf(doc.Kind), title, ink, new RectangleF(24, 28, 360, 72), centered);
-                Cell(doc.Kind == DocumentKind.Quote ? "견적번호" : "문서번호", 400, 25, 79, 25, true);
-                Cell(doc.Number, 479, 25, 177, 25);
+                Cell(doc.Kind == DocumentKind.Quote ? "견적번호" : "문서번호", 400, headerTop, 79, 25, true);
+                Cell(doc.Number, 479, headerTop, 177, 25);
                 Cell("작성일자", 400, 50, 79, 25, true);
                 Cell(doc.Date.ToString("yyyy-MM-dd"), 479, 50, 177, 25);
                 Cell(doc.Kind == DocumentKind.Quote ? "유효기간" : "담당자", 400, 75, 79, 25, true);
@@ -1249,7 +1266,13 @@ public partial class Form1 : Form
                 {
                     DrawNotes(notes[page - itemPages], 278, 550);
                 }
-                graphics.DrawString($"{page + 1} / {PageCount(doc)}", normal, ink, new RectangleF(24, 847, 632, 24), centered);
+                const int footerHeight = 24;
+                // Keep the printed page number at the bottom even when the page width limits the scale.
+                var footerTop = alignContentToTop ? (bounds.Bottom - top) / scale - footerHeight : 847;
+                using var footerFormat = new StringFormat(centered);
+                if (alignContentToTop) footerFormat.LineAlignment = StringAlignment.Far;
+                graphics.DrawString($"{page + 1} / {PageCount(doc)}", normal, ink,
+                    new RectangleF(24, footerTop, 632, footerHeight), footerFormat);
 
                 void Cell(string value, int x, int y, int width, int height, bool shaded = false, StringFormat? alignment = null)
                 {
